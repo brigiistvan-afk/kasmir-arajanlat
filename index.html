@@ -1,0 +1,970 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Árajánlat Generátor – Kasmir</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<style>
+* { box-sizing: border-box; }
+body { margin: 0; font-family: Georgia, serif; background: #FAF7F2; }
+@keyframes spin { to { transform: rotate(360deg); } }
+input:focus, select:focus, textarea:focus { outline: 2px solid #C9A84C !important; outline-offset: 0; }
+input[type=number]::-webkit-inner-spin-button { opacity: 1; }
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-thumb { background: #C9A84C44; border-radius: 3px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+const e = React.createElement;
+const { useState, useRef } = React;
+
+const G = "#C9A84C", DARK = "#1a1209", CREAM = "#FAF7F2", WARM = "#F5EDD8", BORDER = "rgba(201,168,76,0.28)";
+const fmt = n => Number(n) ? Number(n).toLocaleString("hu-HU") + " Ft" : "–";
+
+const PRODUCTS = {
+  szekszoknyaLepel:       { name: "Székszoknya (lepel) masnival", price: 850, unit: "db" },
+  szekszoknyaSpandex:     { name: "Székszoknya (spandex) masnival", price: 850, unit: "db" },
+  szekszoknyaColorSpandex:{ name: "Színes székszoknya (spandex)", price: 850, unit: "db" },
+  szekszoknyaColorMasni:  { name: "Színes székszoknya masnival (spandex)", price: 950, unit: "db" },
+  masni:                  { name: "Masni", price: 300, unit: "db" },
+  szalagMasni:            { name: "Kiegészítő szalagmasni", price: 200, unit: "db" },
+  foasztal6:              { name: "Főasztal díszítve 6 főre", price: 8000, unit: "db" },
+  foasztal10:             { name: "Főasztal díszítve 8-10 főre", price: 10000, unit: "db" },
+  kasirozas:              { name: "Kasírozás", price: 700, unit: "méter" },
+  kisVaza:                { name: "Kis vázák", price: 500, unit: "db" },
+  vaza:                   { name: "Vázák", price: 700, unit: "db" },
+  hengerVaza:             { name: "Henger / nagy szögletes váza", price: 1100, unit: "db" },
+  zselaGyongy:            { name: "Zselégyöngy vázába (10 főként)", price: 450, unit: "csomag" },
+  vazafeny:               { name: "Vázafény", price: 950, unit: "db" },
+  borosuvegFeny:          { name: "Borosüveg fény", price: 950, unit: "db" },
+  dekorkoDiszites:        { name: "Dekorkő vázába", price: 200, unit: "csomag", m: "200-400 Ft" },
+  uszogYertya:            { name: "Úszógyertya", price: 550, unit: "db" },
+  tukorlap:               { name: "Tükörlap (váza alá)", price: 650, unit: "db" },
+  szogletTukorlap:        { name: "Szögletes tükörlap", price: 800, unit: "db" },
+  asztaliDekorkő:         { name: "Asztali dekorkő (10 főként)", price: 600, unit: "csomag" },
+  szorокristaly:          { name: "Asztali szórókristály (10 főként)", price: 750, unit: "csomag" },
+  fakorong:               { name: "Fakorong", price: 350, unit: "db" },
+  uvegMecsestarto:        { name: "Üveg mécsestartó mécsességel", price: 450, unit: "db" },
+  asztaliFluto:           { name: "Asztali futó", price: 550, unit: "db" },
+  zsakvFluto:             { name: "Zsákvászon futó csipkével", price: 750, unit: "db" },
+  feherAsztalterito:      { name: "Fehér asztalterítő", price: 850, unit: "db" },
+  feherKorasztalTerito:   { name: "Fehér körasztal-terítő", price: 1800, unit: "db" },
+  asztalszam:             { name: "Asztalszám", price: 300, unit: "db" },
+  asztalszamTarto:        { name: "Asztalszám tartó", price: 200, unit: "db" },
+  uletoKartya:            { name: "Ültetőkártyák", price: 120, unit: "db" },
+  szalveta:               { name: "Szalvéták", price: 80, unit: "db" },
+  szalvetagyuru:          { name: "Szalvéták szalvétagyűrűvel", price: 150, unit: "db" },
+  menuHenger:             { name: "Menühenger", price: 700, unit: "db" },
+  menuHaromszog:          { name: "Menüháromszög", price: 700, unit: "db" },
+  fenyfuzerAsztalra5:     { name: "Fényfűzér asztalra (5 m)", price: 1800, unit: "db" },
+  fenyfuzerAsztalra10:    { name: "Fényfűzér asztalra (10 m)", price: 2500, unit: "db" },
+  hatterSima3m:           { name: "Esküvői háttér – méterenként", price: 5000, unit: "méter" },
+  hatterEmelt25:          { name: "Emelt esküvői háttér 2,5m – méterenként", price: 6500, unit: "méter" },
+  hatterSima4m:           { name: "Esküvői háttér (4 m-től) – méterenként", price: 4500, unit: "méter" },
+  hatterEmelt4m:          { name: "Emelt esküvői háttér 2,5m (4m-től) – méterenként", price: 6000, unit: "méter" },
+  hatterFeny1:            { name: "Esküvői háttérfény (3x3m) – 1 db", price: 4000, unit: "db" },
+  hatterFeny2:            { name: "Esküvői háttérfény (3x3m) – 2 db-tól", price: 3500, unit: "db" },
+  hatterSzinesDekor:      { name: "Háttérre színes dekoranyag", price: 5000, unit: "db" },
+  papirviragHatter1x2:    { name: "Papírvirág háttér 1x2 m", price: 12000, unit: "db" },
+  papirviragSzivAlak:     { name: "Papírvirágok szív alakban (1,5 m)", price: 20000, unit: "db" },
+  fotofal:                { name: "Fotófal / fotósarok (2x2m)", price: 18000, unit: "db" },
+  fotofalBerleti:         { name: "Fotófal / fotósarok (bérleti díj)", price: 13500, unit: "db" },
+  menny4Ag4x5:            { name: "Mennyezet 4 ágban (4x5m)", price: 25000, unit: "db" },
+  menny4Ag4x10:           { name: "Mennyezet 4 ágban (4x10m)", price: 30000, unit: "db" },
+  menny6Ag6x5:            { name: "Mennyezet 6 ágban (6x5m)", price: 35000, unit: "db" },
+  menny6Ag6x10:           { name: "Mennyezet 6 ágban (6x10m)", price: 50000, unit: "db" },
+  mennyFeny5m:            { name: "Mennyezetfény több ágban (5m átmérőig)", price: 15000, unit: "db" },
+  mennyFeny10m:           { name: "Mennyezetfény több ágban (10m átmérőig)", price: 25000, unit: "db" },
+  mennyDekorFelar:        { name: "Mennyezet dekor felár (3,5m fölött)", price: 15000, unit: "db" },
+  mennyExtraFelar:        { name: "Extra magas mennyezet felár (állvánnyal)", price: 30000, unit: "db" },
+  fenyfuzerMenny10m:      { name: "Fényfűzér mennyezetre 10 m", price: 3500, unit: "db" },
+  fenyfuzerOszlop10m:     { name: "Fényfűzér oszlopra 10 m", price: 3500, unit: "db" },
+  lampion25:              { name: "Lampion 25 cm", price: 500, unit: "db" },
+  lampion35:              { name: "Lampion 35 cm", price: 600, unit: "db" },
+  oszlopDekorAnyag:       { name: "Oszlopok díszítése anyaggal", price: 3500, unit: "db", m: "3500-tól" },
+  fontSzivDiszites:       { name: "Fonott szív díszítve kb 60 cm", price: 3500, unit: "db" },
+  kisebbDiszek:           { name: "Kisebb díszek, masnik, vesszőszívek", price: 500, unit: "db" },
+  faliDekoranyag:         { name: "Fali dekoranyag (3m magasságig)", price: 1200, unit: "méter" },
+  ledSzalag:              { name: "Ledszalag falvilágítás anyaggal", price: 3500, unit: "db" },
+  bejaratAjtoDiszites:    { name: "Bejárati ajtó díszítése", price: 3500, unit: "db" },
+  lepsokKorlat:           { name: "Lépcsők, korlátok díszítése", price: 400, unit: "méter" },
+  korlataFenysor:         { name: "Korlátra fénysor 10 m", price: 3500, unit: "db" },
+  lufidekSziv70:          { name: "Lufidekoráció szív 70 cm", price: 10000, unit: "db", m: "Bérleti díj: 8000 Ft" },
+  lufidekSziv100:         { name: "Lufidekoráció szív 100 cm", price: 12000, unit: "db", m: "Bérleti díj: 10000 Ft" },
+  lufioszlop180:          { name: "Lufidekoráció oszlop 180 cm", price: 8000, unit: "db" },
+  heliumLufi:             { name: "Héliumos léggömb", price: 950, unit: "db" },
+  leggomb:                { name: "Léggömb", price: 120, unit: "db" },
+  szertartas:             { name: "Szertartás szabadtéri helyszín (alap csomag)", price: 35000, unit: "db" },
+  szertartasLeszurokkal:  { name: "Szertartás szabadtéri + boldogságkapu + leszúrók", price: 50000, unit: "db" },
+  boldogsagkapu:          { name: "Boldogságkapu", price: 15000, unit: "db" },
+  boldogsagkapuTextil:    { name: "Boldogságkapu (díszítve textillel)", price: 18000, unit: "db" },
+  kertiLeszuro:           { name: "Kerti leszúrók (díszítve)", price: 1200, unit: "db", m: "Bérleti díj: 1000 Ft" },
+  lampaSzertartasra:      { name: "Lámpa szertartásra", price: 2000, unit: "db" },
+  uletoRend:              { name: "Ültetési rend", price: 2500, unit: "db" },
+  uletoRendKeretben:      { name: "Ültetési rend keretben", price: 3500, unit: "db" },
+  uletoRendAllvannyal:    { name: "Ültetési rend keretben állvánnyal", price: 5500, unit: "db" },
+  buborekfujo:            { name: "Buborékfújó gép (1l folyadékkal)", price: 5500, unit: "db" },
+  gyereksarok46:          { name: "Gyereksarok (4-6 fő) animátor nélkül", price: 12000, unit: "alkalom" },
+  gyereksarok710:         { name: "Gyereksarok (7-10 fő) animátor nélkül", price: 16000, unit: "alkalom" },
+  hozottAnyag:            { name: "Hozott anyagok felrakása", price: 4000, unit: "Ft/óra" },
+  uzemanyag:              { name: "Üzemanyag költség", price: 50, unit: "km" },
+};
+
+const EXTRAS_CATS = [
+  { id: "Terítés", label: "🍽️ Terítés", keys: ["feherAsztalterito","feherKorasztalTerito","szalvetagyuru","fenyfuzerAsztalra5","fenyfuzerAsztalra10"] },
+  { id: "Asztaldísz", label: "🌸 Asztaldísz extra", keys: ["kisVaza","hengerVaza","zselaGyongy","dekorkoDiszites","uszogYertya","szogletTukorlap","asztaliDekorkő","szorокristaly","fakorong","uvegMecsestarto","zsakvFluto","borosuvegFeny"] },
+  { id: "Fotófal", label: "📸 Fotófal / háttér extra", keys: ["fotofal","fotofalBerleti","hatterSzinesDekor","papirviragHatter1x2","papirviragSzivAlak","hatterEmelt25","hatterSima4m","hatterEmelt4m"] },
+  { id: "Mennyezet", label: "✨ Mennyezetdekor", keys: ["menny4Ag4x5","menny4Ag4x10","menny6Ag6x5","menny6Ag6x10","mennyFeny5m","mennyFeny10m","mennyDekorFelar","mennyExtraFelar","fenyfuzerMenny10m","fenyfuzerOszlop10m","lampion25","lampion35"] },
+  { id: "Dekor", label: "🎀 Dekor elemek", keys: ["oszlopDekorAnyag","fontSzivDiszites","kisebbDiszek","faliDekoranyag","ledSzalag","bejaratAjtoDiszites","lepsokKorlat","korlataFenysor","masni","szalagMasni"] },
+  { id: "Lufi", label: "🎈 Lufi / léggömb", keys: ["lufidekSziv70","lufidekSziv100","lufioszlop180","heliumLufi","leggomb"] },
+  { id: "Szertartás", label: "💒 Szertartás", keys: ["szertartas","szertartasLeszurokkal","boldogsagkapu","boldogsagkapuTextil","kertiLeszuro","lampaSzertartasra"] },
+  { id: "Főasztal", label: "👑 Főasztal díszítés", keys: ["foasztal6","foasztal10","kasirozas"] },
+  { id: "Egyéb", label: "🔧 Egyéb", keys: ["uletoRend","uletoRendKeretben","uletoRendAllvannyal","buborekfujo","gyereksarok46","gyereksarok710","hozottAnyag","uzemanyag"] },
+];
+
+const ALL_KEYS = Object.keys(PRODUCTS);
+
+function calcMeter(foasztalFo, hatterMeter) {
+  const fF = parseInt(foasztalFo) || 0;
+  const h = parseFloat(hatterMeter) || 0;
+  const c = fF > 0 ? Math.max(3, Math.ceil(3 + Math.max(0, fF - 4) * 0.7)) : 3;
+  return h > 0 ? Math.ceil(h) : c;
+}
+
+function buildAutoItems({ vendeg, asztalTipus, asztalDb, foasztalFo, menuTipus, szekTipus, vanHatter, hatterMeter, asztalHossz }) {
+  const v = parseInt(vendeg) || 0;
+  const a = parseInt(asztalDb) || (v ? Math.ceil(v / 10) : 0);
+  const fF = parseInt(foasztalFo) || 0;
+  const items = [];
+  if (v > 0) {
+    items.push({ key: szekTipus || "szekszoknyaColorSpandex", qty: v, rule: v + " vendég" });
+    items.push({ key: "szalveta", qty: v, rule: v + " vendég" });
+    items.push({ key: "uletoKartya", qty: v, rule: v + " vendég" });
+  }
+  if (a > 0) {
+    items.push({ key: "asztalszam", qty: a, rule: a + " asztal" });
+    items.push({ key: "asztalszamTarto", qty: a, rule: a + " asztal" });
+    items.push({ key: "szorокristaly", qty: a, rule: a + " asztal" });
+    items.push({ key: "vaza", qty: a, rule: a + " asztal" });
+    items.push({ key: "vazafeny", qty: a, rule: a + " váza" });
+    items.push({ key: "tukorlap", qty: a, rule: a + " asztal" });
+    // Borosüveg fény: körasztalnál 1/asztal, hosszúnál 1/10 fő
+    if (asztalTipus === "kor") {
+      items.push({ key: "borosuvegFeny", qty: a, rule: a + " körasztal" });
+    } else {
+      const bFenyQty = v > 0 ? Math.ceil(v / 10) : a;
+      items.push({ key: "borosuvegFeny", qty: bFenyQty, rule: v + " vendég ÷ 10" });
+    }
+    if (asztalTipus === "kor") {
+      items.push({ key: "asztaliFluto", qty: a, rule: a + " körasztal" });
+    } else {
+      const fDb = v > 0 ? Math.ceil(v / 6) : a;
+      items.push({ key: "asztaliFluto", qty: fDb, rule: v + " vendég ÷ 6" });
+    }
+    if (menuTipus !== "nincs") {
+      const menuKey = menuTipus === "henger" ? "menuHenger" : "menuHaromszog";
+      let mQty = asztalTipus === "kor" ? a : Math.ceil(v / 10);
+      const foE = fF > 4 ? 2 : 0;
+      mQty += foE;
+      items.push({ key: menuKey, qty: mQty, rule: (asztalTipus === "kor" ? a + " asztal" : v + "÷10") + (foE ? " +" + foE + " főasztal" : "") });
+    }
+  }
+  // Hosszú asztal terítő számítás
+  if (asztalTipus === "hosszu" && a > 0) {
+    const h = parseInt(asztalHossz) || 170;
+    const ossz = h * a;
+    const terDb = Math.ceil(ossz / 140);
+    items.push({ key: "feherAsztalterito", qty: terDb, rule: a + " asztal × " + h + "cm ÷ 140cm = " + terDb + " db" });
+  }
+
+  if (vanHatter) {
+    const meter = calcMeter(foasztalFo, hatterMeter);
+    items.push({ key: "hatterSima3m", qty: meter, rule: meter + "m (" + (fF > 0 ? fF + " főasztal fő" : "min 3m") + ")" });
+    items.push({ key: meter <= 5 ? "hatterFeny1" : "hatterFeny2", qty: 1, rule: meter + "m → fény" });
+  }
+  return items;
+}
+
+// ── Stílus segédek ──
+const inp = (extra) => Object.assign({ border: "1.5px solid " + BORDER, borderRadius: 8, padding: "10px 12px", fontFamily: "Georgia,serif", fontSize: "0.92rem", background: CREAM, color: DARK, boxSizing: "border-box", width: "100%" }, extra || {});
+const btn = (bg, color, extra) => Object.assign({ border: "none", borderRadius: 10, fontFamily: "Georgia,serif", fontWeight: 700, cursor: "pointer", background: bg, color: color }, extra || {});
+
+// ── Mini toggle csúszka ──
+function MiniToggle({ on, onToggle }) {
+  return e("div", { onClick: onToggle, style: { width: 32, height: 18, borderRadius: 9, background: on ? G : "#ddd", position: "relative", cursor: "pointer", flexShrink: 0, transition: "background 0.2s" } },
+    e("div", { style: { width: 14, height: 14, borderRadius: "50%", background: "white", position: "absolute", top: 2, left: on ? 16 : 2, transition: "left 0.2s" } })
+  );
+}
+
+// ── Felirat ──
+function Lbl({ children, sub }) {
+  return e("div", { style: { marginBottom: 5 } },
+    e("div", { style: { fontSize: "0.68rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#888" } }, children),
+    sub ? e("div", { style: { fontSize: "0.65rem", color: "#bbb", marginTop: 1 } }, sub) : null
+  );
+}
+
+// ── Toggle 3 gomb ──
+function Toggle3({ value, onChange, options }) {
+  return e("div", { style: { display: "flex", gap: 7 } },
+    ...options.map(([v, icon, label]) =>
+      e("button", { key: v, onClick: () => onChange(v), style: { flex: 1, padding: "8px 4px", border: "2px solid " + (value === v ? G : BORDER), background: value === v ? DARK : "white", color: value === v ? G : "#aaa", borderRadius: 8, cursor: "pointer", fontFamily: "Georgia,serif", fontSize: "0.78rem", fontWeight: value === v ? 700 : 400, display: "flex", flexDirection: "column", alignItems: "center", gap: 2 } },
+        e("span", { style: { fontSize: "1.1rem" } }, icon), label
+      )
+    )
+  );
+}
+
+// ── Switch ──
+function Sw({ on, onChange, label, sub }) {
+  return e("div", { onClick: () => onChange(!on), style: { display: "flex", alignItems: "center", gap: 11, padding: "10px 13px", border: "2px solid " + (on ? G : BORDER), borderRadius: 10, cursor: "pointer", background: on ? "rgba(201,168,76,0.06)" : "white" } },
+    e("div", { style: { width: 36, height: 20, borderRadius: 10, background: on ? G : "#ddd", position: "relative", flexShrink: 0 } },
+      e("div", { style: { width: 16, height: 16, borderRadius: "50%", background: "white", position: "absolute", top: 2, left: on ? 18 : 2, transition: "left 0.2s" } })
+    ),
+    e("div", null,
+      e("div", { style: { fontWeight: 700, color: DARK, fontSize: "0.87rem" } }, label),
+      sub ? e("div", { style: { fontSize: "0.68rem", color: "#aaa", marginTop: 1 } }, sub) : null
+    )
+  );
+}
+
+// ── Mennyiség input ──
+function QtyInput({ value, onChange, small }) {
+  const w = small ? 36 : 42, bw = small ? 20 : 21;
+  const bStyle = { width: bw, height: bw, border: "1px solid " + BORDER, background: "white", borderRadius: 4, cursor: "pointer", fontSize: "0.88rem", color: DARK, fontWeight: 700 };
+  return e("div", { style: { display: "flex", alignItems: "center", gap: 3 } },
+    e("button", { onClick: () => onChange(Math.max(1, (parseInt(value) || 1) - 1)), style: bStyle }, "−"),
+    e("input", { type: "number", value, min: 1,
+      onChange: ev => { const v = ev.target.value; if (v === "" || v === "0") { onChange(""); return; } const n = parseInt(v); if (!isNaN(n) && n >= 1) onChange(n); },
+      onBlur: ev => { if (!ev.target.value || parseInt(ev.target.value) < 1) onChange(1); },
+      style: { width: w, border: "1px solid " + BORDER, borderRadius: 4, padding: "2px 3px", textAlign: "center", fontFamily: "Georgia,serif", fontSize: "0.83rem", color: DARK, background: CREAM }
+    }),
+    e("button", { onClick: () => onChange((parseInt(value) || 1) + 1), style: bStyle }, "+")
+  );
+}
+
+// ── Auto tétel sor ──
+function AutoRow({ item, on, onToggle, onQtyChange, isLast }) {
+  const p = PRODUCTS[item.key]; if (!p) return null;
+  return e("div", { style: { display: "flex", alignItems: "center", gap: 9, padding: "9px 14px", borderBottom: isLast ? "none" : "1px solid " + BORDER, background: on ? "white" : "#fafafa", opacity: on ? 1 : 0.42 } },
+    e(MiniToggle, { on, onToggle }),
+    e("div", { style: { flex: 1, minWidth: 0 } },
+      e("div", { style: { fontSize: "0.84rem", fontWeight: 600, color: DARK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, p.name),
+      e("div", { style: { fontSize: "0.63rem", color: "#bbb" } }, item.rule)
+    ),
+    e(QtyInput, { value: item.qty, onChange: onQtyChange }),
+    e("div", { style: { textAlign: "right", minWidth: 64, fontSize: "0.81rem", fontWeight: 700, color: on ? G : "#ccc" } }, fmt(p.price * (parseInt(item.qty) || 1)))
+  );
+}
+
+// ── Extra tétel sor ──
+function ExtraRow({ extraKey, state, onToggle, onQty }) {
+  const p = PRODUCTS[extraKey]; if (!p) return null;
+  const on = !!state.on;
+  const qty = state.qty !== undefined ? state.qty : 1;
+  return e("div", { style: { display: "flex", alignItems: "center", gap: 9, padding: "8px 12px", borderBottom: "1px solid " + BORDER, background: on ? "rgba(201,168,76,0.04)" : "white" } },
+    e(MiniToggle, { on, onToggle }),
+    e("div", { style: { flex: 1, minWidth: 0 } },
+      e("div", { style: { fontSize: "0.83rem", fontWeight: on ? 600 : 400, color: on ? DARK : "#aaa", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, p.name),
+      p.m ? e("div", { style: { fontSize: "0.61rem", color: "#bbb" } }, "⚠️ " + p.m) : null
+    ),
+    e("div", { style: { fontSize: "0.77rem", color: on ? G : "#ccc", fontWeight: 700, minWidth: 52, textAlign: "right" } }, p.price.toLocaleString("hu-HU") + " Ft"),
+    on ? e(QtyInput, { value: qty, onChange: onQty, small: true }) : null
+  );
+}
+
+// ── FŐ APP ──
+function App() {
+  const [step, setStep] = useState(1);
+  const [clientName, setClientName] = useState("");
+  const [eventDate, setEventDate] = useState("");
+  const [eventType, setEventType] = useState("");
+  const [helyszin, setHelyszin] = useState("");
+  const [szin, setSzin] = useState("");
+  const [vendeg, setVendeg] = useState("");
+  const [asztalTipus, setAsztalTipus] = useState("kor");
+  const [asztalDb, setAsztalDb] = useState("");
+  const [foasztalFo, setFoasztalFo] = useState("");
+  const [menuTipus, setMenuTipus] = useState("henger");
+  const [szekTipus, setSzekTipus] = useState("szekszoknyaColorSpandex");
+  const [vanHatter, setVanHatter] = useState(false);
+  const [hatterMeter, setHatterMeter] = useState("");
+  const [asztalHossz, setAsztalHossz] = useState("");
+  const [autoState, setAutoState] = useState({});
+  const [extraState, setExtraState] = useState({});
+  const [openCats, setOpenCats] = useState({});
+  const [inputMode, setInputMode] = useState("foto");
+  const [imageB64, setImageB64] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
+  const [imageMediaType, setImageMediaType] = useState("image/jpeg");
+  const [textInput, setTextInput] = useState("");
+  const [fileError, setFileError] = useState("");
+  const [apiKey, setApiKey] = useState(() => {
+    try { return localStorage.getItem("kasmir_gemini_key") || ""; } catch { return ""; }
+  });
+  const [showSettings, setShowSettings] = useState(false);
+  const [apiKeySaved, setApiKeySaved] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [aiSummary, setAiSummary] = useState("");
+  const [items, setItems] = useState([]);
+  const [quoteNum, setQuoteNum] = useState("");
+  const [addKey, setAddKey] = useState(ALL_KEYS[0]);
+  const [addQty, setAddQty] = useState(1);
+  const fileRef = useRef();
+
+  const params = { vendeg, asztalTipus, asztalDb, foasztalFo, menuTipus, szekTipus, vanHatter, hatterMeter, asztalHossz };
+  const rawAuto = buildAutoItems(params);
+  const autoItems = rawAuto.map(it => ({
+    ...it,
+    on: autoState[it.key]?.on !== undefined ? autoState[it.key].on : true,
+    qty: autoState[it.key]?.qty !== undefined ? autoState[it.key].qty : it.qty,
+  }));
+  const setAutoOn = (key, val) => setAutoState(p => ({ ...p, [key]: { ...p[key], on: val, qty: p[key]?.qty ?? rawAuto.find(i => i.key === key)?.qty ?? 1 } }));
+  const setAutoQty = (key, val) => setAutoState(p => ({ ...p, [key]: { ...p[key], qty: val, on: p[key]?.on !== undefined ? p[key].on : true } }));
+  const setExtra = (key, on, qty) => setExtraState(p => ({ ...p, [key]: { on, qty: qty ?? p[key]?.qty ?? 1 } }));
+  const setExtraQty = (key, val) => setExtraState(p => ({ ...p, [key]: { ...p[key], qty: val } }));
+
+  const extraItems = Object.entries(extraState).filter(([, v]) => v.on)
+    .map(([key, v]) => ({ key, qty: parseInt(v.qty) || 1, note: "Extras", auto: false }));
+
+  const handleFile = ev => {
+    const file = ev.target.files && ev.target.files[0];
+    if (!file) return;
+    if (!window.FileReader) {
+      setFileError("A böngésző nem támogatja a fájlfeltöltést. Frissítsd Chrome-ot!");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setFileError("A fotó túl nagy (max 10 MB). Kérlek tömörítsd!");
+      return;
+    }
+    setFileError("");
+    setImageMediaType(file.type || "image/jpeg");
+    const reader = new FileReader();
+    reader.onerror = () => setFileError("Fotó olvasási hiba – próbálj másik képet.");
+    reader.onload = e2 => {
+      setImagePreview(e2.target.result);
+      setImageB64(e2.target.result.split(",")[1]);
+      setFileError("");
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const buildFinalItems = (aiItems = []) => {
+    const ea = autoItems.filter(it => it.on);
+    return [...ea.map(i => ({ key: i.key, qty: i.qty, note: i.rule, auto: true })), ...extraItems, ...aiItems];
+  };
+
+  const generate = async (skipAI = false) => {
+    setLoading(true); setItems([]); setAiSummary("");
+    const ea = autoItems.filter(it => it.on);
+    const fixed = [...ea.map(i => i.key), ...extraItems.map(i => i.key)];
+    if (skipAI || (!imageB64 && !textInput.trim())) {
+      setAiSummary("Ajánlat az adatok és a kiválasztott tételek alapján készült.");
+      setItems(buildFinalItems());
+      setQuoteNum("AJ-" + Date.now().toString().slice(-6));
+      setStep(4); setLoading(false); return;
+    }
+    const productList = ALL_KEYS.filter(k => !fixed.includes(k))
+      .map(k => k + ": " + PRODUCTS[k].name + " — " + PRODUCTS[k].price + " Ft/" + PRODUCTS[k].unit).join("\n");
+    const system = "Te eseménydekorációs árajánlat-asszisztens vagy.\nElérhető termékek (csak ezekből):\n" + productList + "\nFixált tételek (NE add újra): " + (fixed.join(", ") || "nincs") + "\nElemezd a képet/leírást. Csak azt add hozzá, amit ténylegesen látsz/kérnek.\nHa fotófal látható: fotofal (1 db).\nVálaszolj CSAK JSON-nel: {\"summary\":\"2-3 mondatos magyar összefoglaló\",\"items\":[{\"key\":\"kulcs\",\"qty\":5}]}";
+    let aiItems = [], summary = "";
+    try {
+      // userContent: Gemini formátumban a geminiFotoParts-ban van
+      const currentKey = apiKey || (localStorage.getItem("kasmir_gemini_key") || "");
+      if (!currentKey) {
+        setLoading(false);
+        setShowSettings(true);
+        return;
+      }
+      // Gemini 2.0 Flash – ingyenes, napi 1500 kérés
+      const geminiUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + currentKey;
+      const geminiFotoParts = (inputMode === "foto" && imageB64)
+        ? [{ inlineData: { mimeType: imageMediaType, data: imageB64 } },
+           { text: "Vendégszám: " + (vendeg || "~50") + ". Asztal: " + (asztalTipus === "kor" ? "körasztal" : "hosszú asztal") + ", " + (asztalDb || "?") + " db. Főasztal: " + (foasztalFo || "?") + " fő. Szín: " + (szin || "?") + "." }]
+        : [{ text: "Leírás: " + textInput + "\nVendégszám: " + (vendeg || "~50") + "\nAsztal: " + (asztalTipus === "kor" ? "körasztal" : "hosszú asztal") + ", " + (asztalDb || "?") + " db\nFőasztal: " + (foasztalFo || "?") + " fő\nSzín: " + (szin || "?") }];
+      const res = await fetch(geminiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: system }] },
+          contents: [{ role: "user", parts: geminiFotoParts }],
+          generationConfig: { maxOutputTokens: 1000, temperature: 0.2 }
+        }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error.message || "Gemini API hiba");
+      const text = data.candidates?.[0]?.content?.parts?.map(p => p.text || "").join("") || "";
+      const match = text.match(/\{[\s\S]*\}/);
+      if (match) {
+        const parsed = JSON.parse(match[0]);
+        summary = parsed.summary || "";
+        aiItems = (parsed.items || []).filter(it => PRODUCTS[it.key] && !fixed.includes(it.key))
+          .map(it => ({ key: it.key, qty: it.qty, note: "AI azonosította", auto: false }));
+      }
+    } catch { summary = "Az ajánlat az adatok alapján készült."; }
+    setAiSummary(summary);
+    setItems(buildFinalItems(aiItems));
+    setQuoteNum("AJ-" + Date.now().toString().slice(-6));
+    setStep(4); setLoading(false);
+  };
+
+  const changeQty = (i, val) => setItems(p => p.map((it, j) => j === i ? { ...it, qty: val } : it));
+  const removeItem = i => setItems(p => p.filter((_, j) => j !== i));
+  const addItem = () => setItems(p => {
+    const ex = p.findIndex(it => it.key === addKey);
+    if (ex >= 0) return p.map((it, j) => j === ex ? { ...it, qty: (parseInt(it.qty) || 0) + addQty } : it);
+    return [...p, { key: addKey, qty: addQty, note: "Kézzel", auto: false }];
+  });
+  const total = items.reduce((s, it) => { const p = PRODUCTS[it.key]; return p ? s + p.price * (parseInt(it.qty) || 1) : s; }, 0);
+
+  const exportExcel = async () => {
+    try {
+      const wb = XLSX.utils.book_new();
+      const meta = [
+        ["Kasmir Esküvő és Rendezvény – Árajánlat"],
+        [quoteNum],
+        [],
+        ["Ügyfél", clientName || "–", "", "Helyszín", helyszin || "–"],
+        ["Dátum", eventDate ? new Date(eventDate).toLocaleDateString("hu-HU") : "–", "", "Esemény", eventType || "–"],
+        ["Vendégszám", vendeg ? vendeg + " fő" : "–", "", "Szín", szin || "–"],
+        [],
+        ["Megnevezés", "Egységár (Ft)", "Mennyiség", "Egység", "Összeg (Ft)", "Megjegyzés"],
+      ];
+      const rows = items.map(it => {
+        const p = PRODUCTS[it.key]; if (!p) return null;
+        return [p.name, p.price, parseInt(it.qty) || 1, p.unit, p.price * (parseInt(it.qty) || 1), p.m || ""];
+      }).filter(Boolean);
+      const wsData = [...meta, ...rows, [], ["VÉGÖSSZEG", "", "", "", total, ""]];
+      const ws = XLSX.utils.aoa_to_sheet(wsData);
+      ws["!cols"] = [{ wch: 42 }, { wch: 14 }, { wch: 12 }, { wch: 10 }, { wch: 14 }, { wch: 22 }];
+      XLSX.utils.book_append_sheet(wb, ws, "Árajánlat");
+      // base64 data URI – file:// alatt is működik
+      const wbOut = XLSX.write(wb, { bookType: "xlsx", type: "base64" });
+      const fn = (quoteNum || "arajanlat") + "_" + (clientName || "ismeretlen").replace(/\s/g, "_") + ".xlsx";
+      const dataUri = "data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64," + wbOut;
+      // Modern File System Access API (Chrome Android támogatja)
+      if (window.showSaveFilePicker) {
+        const ab = Uint8Array.from(atob(wbOut), c => c.charCodeAt(0));
+        const fh = await window.showSaveFilePicker({ suggestedName: fn, types: [{ description: "Excel", accept: { "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"] } }] });
+        const ws2 = await fh.createWritable();
+        await ws2.write(ab); await ws2.close();
+      } else {
+        // Fallback: data URI megnyitás új lapon (mobil Chrome menti)
+        const a = document.createElement("a");
+        a.href = dataUri; a.download = fn; a.target = "_blank";
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        // Ha a letöltés nem indul el automatikusan, új lapon nyitjuk meg
+        setTimeout(() => { if (document.hasFocus()) window.open(dataUri, "_blank"); }, 800);
+      }
+    } catch(err) {
+      alert("Excel mentés hiba: " + err.message);
+    }
+  };
+
+  const downloadPDF = async () => {
+    try {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const gold = [201, 168, 76];
+      const dark = [26, 18, 9];
+      const W = doc.internal.pageSize.getWidth();
+      let y = 18;
+
+      // Fejléc sáv
+      doc.setFillColor(...dark);
+      doc.rect(0, 0, W, 22, "F");
+      doc.setTextColor(...gold);
+      doc.setFontSize(13);
+      doc.setFont("helvetica", "bold");
+      doc.text("Arajanlat", 14, 10);
+      doc.setFontSize(7);
+      doc.setFont("helvetica", "normal");
+      doc.text("Kasmir Eskuvoi es Rendezvenyszervezes", 14, 16);
+      doc.setTextColor(...gold);
+      doc.setFontSize(8);
+      doc.text(quoteNum, W - 14, 13, { align: "right" });
+      y = 30;
+
+      // Meta adatok
+      const metaLines = [];
+      if (clientName) metaLines.push(["Ugyfel", clientName]);
+      if (helyszin)   metaLines.push(["Helyszin", helyszin]);
+      if (eventDate)  metaLines.push(["Datum", new Date(eventDate).toLocaleDateString("hu-HU")]);
+      if (eventType)  metaLines.push(["Esemeny", eventType]);
+      if (vendeg)     metaLines.push(["Vendegsz.", vendeg + " fo"]);
+      if (szin)       metaLines.push(["Szin", szin]);
+
+      if (metaLines.length > 0) {
+        doc.setFontSize(8);
+        let mx = 14;
+        const colW = (W - 28) / 3;
+        metaLines.forEach(([k, v], i) => {
+          const col = i % 3;
+          const row = Math.floor(i / 3);
+          const cx = 14 + col * colW;
+          const cy = y + row * 7;
+          doc.setTextColor(150, 140, 130);
+          doc.setFont("helvetica", "normal");
+          doc.text(k + ":", cx, cy);
+          doc.setTextColor(...dark);
+          doc.setFont("helvetica", "bold");
+          doc.text(v, cx + 18, cy);
+        });
+        y += Math.ceil(metaLines.length / 3) * 7 + 4;
+        doc.setDrawColor(...gold);
+        doc.setLineWidth(0.3);
+        doc.line(14, y, W - 14, y);
+        y += 6;
+      }
+
+      // AI összefoglaló
+      if (aiSummary) {
+        doc.setFillColor(245, 237, 216);
+        const lines = doc.splitTextToSize(aiSummary, W - 36);
+        const boxH = lines.length * 5 + 8;
+        doc.rect(14, y - 3, W - 28, boxH, "F");
+        doc.setDrawColor(...gold);
+        doc.setLineWidth(0.8);
+        doc.line(14, y - 3, 14, y - 3 + boxH);
+        doc.setTextColor(80, 70, 60);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8);
+        lines.forEach((ln, i) => doc.text(ln, 20, y + i * 5));
+        y += boxH + 5;
+        doc.setLineWidth(0.3);
+      }
+
+      // Tételek táblázat
+      const tableRows = items.map(it => {
+        const p = PRODUCTS[it.key]; if (!p) return null;
+        const qty = parseInt(it.qty) || 1;
+        return [
+          p.name + (p.m ? " (" + p.m + ")" : ""),
+          p.price.toLocaleString("hu-HU") + " Ft",
+          qty + " " + p.unit,
+          (p.price * qty).toLocaleString("hu-HU") + " Ft"
+        ];
+      }).filter(Boolean);
+
+      doc.autoTable({
+        startY: y,
+        head: [["Megnevezes", "Egysegas", "Mennyiseg", "Osszeg"]],
+        body: tableRows,
+        theme: "grid",
+        styles: { font: "helvetica", fontSize: 8, cellPadding: 3, textColor: dark, lineColor: [240, 235, 230], lineWidth: 0.2 },
+        headStyles: { fillColor: [245, 237, 216], textColor: [140, 120, 80], fontStyle: "bold", fontSize: 7.5 },
+        columnStyles: {
+          0: { cellWidth: "auto" },
+          1: { halign: "right", cellWidth: 28 },
+          2: { halign: "center", cellWidth: 24 },
+          3: { halign: "right", cellWidth: 30, fontStyle: "bold" }
+        },
+        alternateRowStyles: { fillColor: [253, 251, 248] },
+        margin: { left: 14, right: 14 },
+      });
+
+      // Végösszeg
+      const finalY = doc.lastAutoTable.finalY + 5;
+      doc.setDrawColor(...gold);
+      doc.setLineWidth(0.8);
+      doc.line(14, finalY, W - 14, finalY);
+      doc.setFillColor(...gold);
+      doc.rect(14, finalY + 1, W - 28, 10, "F");
+      doc.setTextColor(...dark);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.text("Vegoszszeg", 18, finalY + 7.5);
+      doc.setFontSize(12);
+      doc.text(total.toLocaleString("hu-HU") + " Ft", W - 16, finalY + 7.5, { align: "right" });
+
+      // Lábléc
+      const pageCount = doc.internal.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(7);
+        doc.setTextColor(180, 170, 160);
+        doc.setFont("helvetica", "normal");
+        doc.text("Kasmir Eskuvoi es Rendezvenyszervezes  |  " + quoteNum, 14, 290);
+        doc.text(i + " / " + pageCount, W - 14, 290, { align: "right" });
+      }
+
+      const fn = (quoteNum || "arajanlat") + "_" + (clientName || "arajanlat").replace(/\s/g, "_") + ".pdf";
+      // Modern File System Access API
+      if (window.showSaveFilePicker) {
+        const pdfBytes = doc.output("arraybuffer");
+        const fh = await window.showSaveFilePicker({ suggestedName: fn, types: [{ description: "PDF", accept: { "application/pdf": [".pdf"] } }] });
+        const ws2 = await fh.createWritable();
+        await ws2.write(pdfBytes); await ws2.close();
+      } else {
+        // Fallback: data URI
+        const pdfData = doc.output("datauristring");
+        const a = document.createElement("a");
+        a.href = pdfData; a.download = fn; a.target = "_blank";
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        setTimeout(() => { if (document.hasFocus()) window.open(pdfData, "_blank"); }, 800);
+      }
+    } catch(err) {
+      alert("PDF hiba: " + err.message);
+    }
+  };
+
+  const printQuote = downloadPDF;
+
+  // ── Kártya stílus ──
+  const sCard = { background: "white", borderRadius: 14, border: "1px solid " + BORDER, boxShadow: "0 4px 28px rgba(0,0,0,0.07)", overflow: "hidden" };
+  const sHead = (title, sub) => e("div", { style: { background: WARM, padding: "13px 18px", borderBottom: "1px solid " + BORDER } },
+    e("div", { style: { fontSize: "1rem", fontWeight: 700, color: DARK } }, title),
+    sub ? e("div", { style: { fontSize: "0.71rem", color: "#aaa", marginTop: 2 } }, sub) : null
+  );
+  const stepLbls = ["1. Adatok", "2. Extras", "3. Kép/Leírás", "4. Ajánlat"];
+  const divider = e("div", { style: { height: 1, background: BORDER, margin: "0 0 13px" } });
+
+  return e("div", { style: { fontFamily: "Georgia,serif", background: CREAM, minHeight: "100vh" } },
+
+    // HEADER
+    e("div", { style: { background: DARK, padding: "12px 18px", borderBottom: "2px solid " + G, display: "flex", alignItems: "center", gap: 11 } },
+      e("div", { style: { width: 34, height: 34, background: G, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, flexShrink: 0 } }, "✦"),
+      e("div", null,
+        e("div", { style: { color: CREAM, fontSize: "1rem", fontWeight: 700 } }, "Árajánlat Generátor"),
+        e("div", { style: { color: G + "88", fontSize: "0.61rem", letterSpacing: "0.1em", textTransform: "uppercase" } }, "Kasmir Esküvő és Rendezvény")
+      ),
+      e("div", { style: { marginLeft: "auto", display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" } },
+        ...stepLbls.map((s, i) =>
+          e("button", { key: i, onClick: () => step > i + 1 && setStep(i + 1), style: { padding: "4px 9px", borderRadius: 20, fontSize: "0.66rem", fontWeight: 600, border: "none", cursor: step > i + 1 ? "pointer" : "default", background: step === i + 1 ? G : step > i + 1 ? "rgba(201,168,76,0.22)" : "rgba(255,255,255,0.07)", color: step === i + 1 ? DARK : step > i + 1 ? G : "rgba(255,255,255,0.22)" } }, s)
+        ),
+        e("button", { onClick: () => setShowSettings(s => !s), title: "API kulcs beállítása", style: { width: 28, height: 28, borderRadius: "50%", border: "none", background: apiKey ? "rgba(201,168,76,0.3)" : "rgba(255,100,100,0.3)", color: apiKey ? G : "#ff9999", cursor: "pointer", fontSize: "0.9rem", display: "flex", alignItems: "center", justifyContent: "center", marginLeft: 4 } }, "⚙️")
+      )
+    ),
+
+    showSettings && e("div", { style: { position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.6)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 } },
+      e("div", { style: { background: "white", borderRadius: 16, padding: "28px 24px", width: "100%", maxWidth: 420, boxShadow: "0 20px 60px rgba(0,0,0,0.4)" } },
+        e("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 } },
+          e("div", { style: { fontWeight: 700, fontSize: "1rem", color: DARK } }, "⚙️ Gemini API kulcs"),
+          e("button", { onClick: () => { setShowSettings(false); setApiKeySaved(false); }, style: { background: "none", border: "none", fontSize: "1.2rem", cursor: "pointer", color: "#aaa" } }, "✕")
+        ),
+        e("div", { style: { fontSize: "0.78rem", color: "#888", marginBottom: 14, lineHeight: 1.6 } },
+          "Az AI fotóelemzés Google Gemini API kulcsot igényel (ingyenes!). ",
+          e("a", { href: "https://aistudio.google.com/apikey", target: "_blank", style: { color: G } }, "console.anthropic.com"),
+          " → Get API Key (ingyenes)"
+        ),
+        e("input", { type: "password", value: apiKey, placeholder: "AIza...", onChange: ev => setApiKey(ev.target.value),
+          style: { width: "100%", padding: "11px 13px", border: "1.5px solid " + BORDER, borderRadius: 8, fontFamily: "Georgia,serif", fontSize: "0.92rem", background: CREAM, color: DARK, boxSizing: "border-box", marginBottom: 12 } }),
+        e("button", { onClick: () => {
+          try { localStorage.setItem("kasmir_gemini_key", apiKey); } catch {}
+          setApiKeySaved(true);
+          setTimeout(() => { setShowSettings(false); setApiKeySaved(false); }, 1200);
+        }, style: { width: "100%", padding: "11px", background: DARK, color: G, border: "none", borderRadius: 8, fontFamily: "Georgia,serif", fontWeight: 700, fontSize: "0.95rem", cursor: "pointer" } },
+          apiKeySaved ? "✓ Elmentve!" : "Mentés"
+        ),
+        !apiKey && e("div", { style: { marginTop: 12, padding: "9px 12px", background: "#fff9e6", borderRadius: 8, fontSize: "0.73rem", color: "#8a6a00", lineHeight: 1.6 } },
+          "💡 API kulcs nélkül is használható az app — csak az AI fotóelemzés nem működik. Az auto tételek, extras, Excel és PDF letöltés mind elérhető. A Gemini API teljesen ingyenes: napi 1500 kérés, regisztrációval."
+        )
+      )
+    ),
+    e("div", { style: { maxWidth: 680, margin: "0 auto", padding: "18px 12px" } },
+
+      // ═══ LÉPÉS 1 ═══
+      step === 1 && e("div", { style: sCard },
+        sHead("📋 Esemény adatai", "Alapadatok és automatikus tételek"),
+        e("div", { style: { padding: "16px 18px" } },
+
+          e("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 } },
+            e("div", null, e(Lbl, null, "Ügyfél neve"), e("input", { style: inp(), value: clientName, onChange: ev => setClientName(ev.target.value), placeholder: "pl. Kiss Anna" })),
+            e("div", null, e(Lbl, null, "Dátum"), e("input", { style: inp(), type: "date", value: eventDate, onChange: ev => setEventDate(ev.target.value) }))
+          ),
+          e("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 } },
+            e("div", null, e(Lbl, null, "Esemény típusa"),
+              e("select", { style: inp(), value: eventType, onChange: ev => setEventType(ev.target.value) },
+                e("option", { value: "" }, "Válassz..."),
+                ...["Esküvő", "Keresztelő", "Születésnap", "Céges rendezvény", "Egyéb"].map(o => e("option", { key: o }, o))
+              )
+            ),
+            e("div", null, e(Lbl, null, "Helyszín"), e("input", { style: inp(), value: helyszin, onChange: ev => setHelyszin(ev.target.value), placeholder: "pl. Kastély Hotel" }))
+          ),
+          e("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 13 } },
+            e("div", null, e(Lbl, { sub: "Szalvéta, ültetőkártya, székszoknya alapja" }, "Összes vendég"), e("input", { style: inp(), type: "number", value: vendeg, onChange: ev => setVendeg(ev.target.value), placeholder: "pl. 60", min: "1" })),
+            e("div", null, e(Lbl, { sub: "Pl.: fehér+arany" }, "Dekor színek"), e("input", { style: inp(), value: szin, onChange: ev => setSzin(ev.target.value), placeholder: "pl. fehér, arany" }))
+          ),
+
+          divider,
+
+          // Székszoknya
+          e("div", { style: { marginBottom: 13 } },
+            e(Lbl, { sub: "Automatikusan kerül be vendégszám db-ban" }, "Székszoknya típusa"),
+            e("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 } },
+              ...([["szekszoknyaLepel", "Lepel masnival"], ["szekszoknyaSpandex", "Spandex masnival"], ["szekszoknyaColorSpandex", "Színes spandex"], ["szekszoknyaColorMasni", "Színes spandex masnival"]]).map(([key, label]) =>
+                e("button", { key, onClick: () => setSzekTipus(key), style: { padding: "7px 5px", border: "2px solid " + (szekTipus === key ? G : BORDER), background: szekTipus === key ? DARK : "white", color: szekTipus === key ? G : "#aaa", borderRadius: 8, cursor: "pointer", fontFamily: "Georgia,serif", fontSize: "0.77rem", fontWeight: szekTipus === key ? 700 : 400, textAlign: "center" } },
+                  e("div", null, label),
+                  e("div", { style: { fontSize: "0.65rem", marginTop: 1, color: szekTipus === key ? G + "99" : "#ccc" } }, PRODUCTS[key]?.price.toLocaleString("hu-HU") + " Ft/db")
+                )
+              )
+            )
+          ),
+
+          divider,
+
+          // Asztal típus
+          e("div", { style: { marginBottom: 12 } },
+            e(Lbl, { sub: "Meghatározza a futó, váza, tükörlap, menü számítását" }, "Asztal típusa"),
+            e(Toggle3, { value: asztalTipus, onChange: setAsztalTipus, options: [["kor", "⭕", "Körasztal"], ["hosszu", "▬", "Hosszú asztal"]] }),
+            e("div", { style: { fontSize: "0.65rem", color: "#bbb", marginTop: 5, padding: "5px 9px", background: WARM, borderRadius: 6 } },
+              asztalTipus === "kor" ? "Futó · váza · tükörlap = 1/asztal · Menü = 1/asztal (+2 főasztal >4 fő)" : "Futó = 1/6 fő · Váza · tükörlap = 1/asztal · Menü = 1/10 fő (+2 főasztal >4 fő)"
+            )
+          ),
+          e("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 } },
+            e("div", null,
+              e(Lbl, null, asztalTipus === "kor" ? "Körasztalok száma" : "Hosszú asztalok száma"),
+              e("input", { style: inp(), type: "number", value: asztalDb, onChange: ev => setAsztalDb(ev.target.value), placeholder: vendeg ? "~" + Math.ceil((parseInt(vendeg) || 0) / 10) : "db", min: "1" })
+            ),
+            e("div", null,
+              e(Lbl, { sub: "Menü +2 db és háttér méret alapja" }, "Főasztal létszáma"),
+              e("input", { style: inp(), type: "number", value: foasztalFo, onChange: ev => setFoasztalFo(ev.target.value), placeholder: "pl. 8 fő", min: "1" })
+            )
+          ),
+          asztalTipus === "hosszu" && e("div", { style: { background: WARM, borderRadius: 10, padding: "11px 13px", marginBottom: 10, border: "1px solid " + BORDER } },
+            e("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 } },
+              e("div", null,
+                e(Lbl, { sub: "Egy asztal hossza cm-ben — terítő számításhoz" }, "Asztal hossza (cm)"),
+                e("input", { style: inp(), type: "number", value: asztalHossz, onChange: ev => setAsztalHossz(ev.target.value), placeholder: "pl. 170", min: "100" })
+              ),
+              e("div", { style: { display: "flex", alignItems: "center" } }, (() => {
+                const h = parseInt(asztalHossz) || 170;
+                const aDb = parseInt(asztalDb) || (parseInt(vendeg) ? Math.ceil(parseInt(vendeg) / 10) : 0);
+                if (!aDb) return e("div", { style: { fontSize: "0.75rem", color: "#bbb" } }, "Add meg az asztalok számát");
+                const ossz = h * aDb;
+                const terDb = Math.ceil(ossz / 140);
+                return e("div", { style: { fontSize: "0.78rem", color: "#666", lineHeight: 1.9 } },
+                  "→ össz. ", e("strong", null, ossz + " cm"),
+                  e("br"), "→ ", e("strong", null, terDb + " db"), " terítő (140 cm-es)"
+                );
+              })())
+            )
+          ),
+          e("div", { style: { marginBottom: 13 } },
+            e(Lbl, null, "Menükártya típusa"),
+            e(Toggle3, { value: menuTipus, onChange: setMenuTipus, options: [["henger", "🔵", "Menühenger"], ["haromszog", "🔺", "Menüháromszög"], ["nincs", "❌", "Nincs menü"]] })
+          ),
+
+          // Háttér
+          e("div", { style: { marginBottom: 9 } },
+            e(Sw, { on: vanHatter, onChange: setVanHatter, label: "📸 Van esküvői háttér / paraván", sub: "Automatikusan számítja a méterszámot és a fényt" })
+          ),
+          vanHatter && e("div", { style: { background: WARM, borderRadius: 10, padding: "12px 13px", marginBottom: 12, border: "1px solid " + BORDER } },
+            e("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 } },
+              e("div", null,
+                e(Lbl, { sub: "Főasztal alapján auto, minden megkezdett méter egész" }, "Háttér mérete (m)"),
+                e("input", { style: inp(), type: "number", value: hatterMeter, onChange: ev => setHatterMeter(ev.target.value), placeholder: foasztalFo ? "auto ~" + Math.max(3, Math.ceil(3 + Math.max(0, parseInt(foasztalFo) - 4) * 0.7)) + "m" : "pl. 4", step: "0.5", min: "3" })
+              ),
+              e("div", { style: { display: "flex", alignItems: "center" } }, (() => {
+                const m = calcMeter(foasztalFo, hatterMeter);
+                return e("div", { style: { fontSize: "0.78rem", color: "#666", lineHeight: 1.8 } },
+                  "→ ", e("strong", null, m + "m"), " · ", e("strong", null, (m * 5000).toLocaleString("hu-HU") + " Ft"),
+                  e("br"), "→ ", e("strong", null, (m <= 5 ? "1 db" : "2 db") + " háttérfény")
+                );
+              })())
+            )
+          ),
+
+          // Auto tételek
+          autoItems.length > 0 && e("div", { style: { border: "1px solid " + BORDER, borderRadius: 10, overflow: "hidden", marginBottom: 16 } },
+            e("div", { style: { background: WARM, padding: "8px 14px", borderBottom: "1px solid " + BORDER, display: "flex", justifyContent: "space-between", alignItems: "center" } },
+              e("div", { style: { fontSize: "0.67rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: G } }, "⚙️ Automatikus tételek"),
+              e("div", { style: { fontSize: "0.71rem", color: "#888" } }, autoItems.filter(i => i.on).length + "/" + autoItems.length + " aktív")
+            ),
+            ...autoItems.map((it, i) => e(AutoRow, { key: it.key, item: it, on: it.on, isLast: i === autoItems.length - 1, onToggle: () => setAutoOn(it.key, !it.on), onQtyChange: val => setAutoQty(it.key, val) })),
+            e("div", { style: { background: WARM, padding: "7px 14px", display: "flex", justifyContent: "space-between", fontSize: "0.74rem", color: "#888" } },
+              e("span", null, "Auto részösszeg"),
+              e("span", { style: { color: G, fontWeight: 700 } }, fmt(autoItems.filter(i => i.on).reduce((s, i) => s + (PRODUCTS[i.key]?.price || 0) * (parseInt(i.qty) || 1), 0)))
+            )
+          ),
+
+          e("button", { onClick: () => setStep(2), style: { width: "100%", padding: "12px", background: DARK, color: G, border: "none", borderRadius: 10, fontFamily: "Georgia,serif", fontSize: "0.96rem", cursor: "pointer", fontWeight: 700 } }, "Tovább → Extras kiválasztása")
+        )
+      ),
+
+      // ═══ LÉPÉS 2 ═══
+      step === 2 && e("div", { style: sCard },
+        sHead("🎁 Extra tételek", "Kategóriánként — nyisd ki, kapcsold be amit kell"),
+        e("div", { style: { padding: "13px 18px" } },
+          ...EXTRAS_CATS.map(cat => {
+            const isOpen = !!openCats[cat.id];
+            const active = cat.keys.filter(k => extraState[k]?.on).length;
+            const catTotal = cat.keys.filter(k => extraState[k]?.on).reduce((s, k) => s + (PRODUCTS[k]?.price || 0) * (parseInt(extraState[k]?.qty) || 1), 0);
+            return e("div", { key: cat.id, style: { marginBottom: 8, border: "1px solid " + (active > 0 ? G : BORDER), borderRadius: 10, overflow: "hidden" } },
+              e("div", { onClick: () => setOpenCats(p => ({ ...p, [cat.id]: !p[cat.id] })), style: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 13px", cursor: "pointer", background: active > 0 ? "rgba(201,168,76,0.07)" : WARM } },
+                e("div", { style: { display: "flex", alignItems: "center", gap: 9 } },
+                  e("span", null, isOpen ? "▾" : "▸"),
+                  e("span", { style: { fontWeight: 700, fontSize: "0.88rem", color: active > 0 ? G : DARK } }, cat.label),
+                  active > 0 ? e("span", { style: { background: G, color: DARK, borderRadius: 20, padding: "1px 7px", fontSize: "0.66rem", fontWeight: 700 } }, active) : null
+                ),
+                active > 0 ? e("span", { style: { fontSize: "0.77rem", fontWeight: 700, color: G } }, fmt(catTotal)) : null
+              ),
+              isOpen && e("div", { style: { borderTop: "1px solid " + BORDER } },
+                ...cat.keys.map(k => e(ExtraRow, { key: k, extraKey: k, state: extraState[k] || { on: false, qty: 1 }, onToggle: () => setExtra(k, !(extraState[k]?.on), extraState[k]?.qty || 1), onQty: val => setExtraQty(k, val) }))
+              )
+            );
+          }),
+
+          extraItems.length > 0 && e("div", { style: { background: WARM, borderRadius: 10, padding: "10px 13px", marginBottom: 13, border: "1px solid " + G } },
+            e("div", { style: { fontSize: "0.66rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: G, marginBottom: 7 } }, "✓ Kiválasztott extras"),
+            ...extraItems.map((it, i) => { const p = PRODUCTS[it.key]; if (!p) return null; return e("div", { key: i, style: { display: "flex", justifyContent: "space-between", fontSize: "0.81rem", padding: "3px 0", color: DARK } }, e("span", null, p.name + " × " + it.qty), e("span", { style: { fontWeight: 700, color: G } }, fmt(p.price * (parseInt(it.qty) || 1)))); }),
+            e("div", { style: { borderTop: "1px dashed " + BORDER, marginTop: 7, paddingTop: 7, display: "flex", justifyContent: "space-between", fontWeight: 700, fontSize: "0.84rem" } },
+              e("span", null, "Extras részösszeg"),
+              e("span", { style: { color: G } }, fmt(extraItems.reduce((s, it) => { const p = PRODUCTS[it.key]; return s + (p?.price || 0) * (parseInt(it.qty) || 1); }, 0)))
+            )
+          ),
+
+          e("div", { style: { display: "grid", gridTemplateColumns: "auto 1fr", gap: 8 } },
+            e("button", { onClick: () => setStep(1), style: { padding: "11px 14px", background: "white", color: "#aaa", border: "1.5px solid " + BORDER, borderRadius: 10, fontFamily: "Georgia,serif", fontSize: "0.86rem", cursor: "pointer" } }, "← Vissza"),
+            e("button", { onClick: () => setStep(3), style: { padding: "11px", background: DARK, color: G, border: "none", borderRadius: 10, fontFamily: "Georgia,serif", fontSize: "0.96rem", cursor: "pointer", fontWeight: 700 } }, "Tovább → Kép / Leírás")
+          )
+        )
+      ),
+
+      // ═══ LÉPÉS 3 ═══
+      step === 3 && e("div", { style: sCard },
+        sHead("🤖 Kép vagy leírás", "AI azonosít extra tételeket — vagy ugord át és generálj azonnal"),
+        window.location.protocol === "file:" && e("div", { style: { background: "#fff3cd", borderLeft: "3px solid #f0a500", padding: "9px 13px", margin: "10px 18px 0", borderRadius: "0 8px 8px 0", fontSize: "0.78rem", color: "#7a5c00" } },
+          e("strong", null, "⚠️ Korlátozott mód"), " — A program fájlból van megnyitva. A fotóelemzés és AI funkció csak a szerveren fut. ",
+          e("strong", null, "Dupla kattints az inditas.bat fájlra"), " a teljes funkcionalitáshoz."
+        ),
+        e("div", { style: { padding: "16px 18px" } },
+          e("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 } },
+            ...([["foto", "📷", "Fotó feltöltése", "Moodboard, inspiráció"], ["szoveg", "✍️", "Szöveges leírás", "Írd le az elképzelést"]]).map(([m, icon, title, sub]) =>
+              e("div", { key: m, onClick: () => setInputMode(m), style: { padding: "12px", border: "2px solid " + (inputMode === m ? G : BORDER), borderRadius: 10, cursor: "pointer", background: inputMode === m ? DARK : "white" } },
+                e("div", { style: { fontSize: "1.7rem", marginBottom: 5 } }, icon),
+                e("div", { style: { fontWeight: 700, color: inputMode === m ? G : DARK, fontSize: "0.89rem" } }, title),
+                e("div", { style: { fontSize: "0.7rem", color: inputMode === m ? G + "88" : "#bbb", marginTop: 2 } }, sub)
+              )
+            )
+          ),
+
+          inputMode === "foto" && e("div", null,
+            e("input", { ref: fileRef, id: "__fileInput", type: "file", accept: "image/*", onChange: handleFile, style: { position: "absolute", opacity: 0, width: 0, height: 0, overflow: "hidden" } }),
+            fileError && e("div", { style: { background: "#fff0f0", border: "1px solid #f5a5a5", borderRadius: 8, padding: "8px 12px", marginBottom: 8, fontSize: "0.78rem", color: "#c0392b" } }, "⚠️ " + fileError),
+            !imagePreview
+              ? e("label", { htmlFor: "__fileInput", style: { display: "block", border: "2px dashed " + BORDER, borderRadius: 10, padding: "32px 18px", textAlign: "center", cursor: "pointer", background: CREAM, marginBottom: 13, transition: "border-color 0.15s" }, onMouseEnter: ev => ev.currentTarget.style.borderColor = G, onMouseLeave: ev => ev.currentTarget.style.borderColor = BORDER },
+                e("div", { style: { fontSize: "2.6rem", marginBottom: 8 } }, "🖼️"),
+                e("div", { style: { fontWeight: 700, fontSize: "0.91rem", color: DARK, marginBottom: 4 } }, "Kattints a fotó kiválasztásához"),
+                e("div", { style: { fontSize: "0.73rem", color: "#bbb", marginBottom: 12 } }, "JPG, PNG, WEBP"),
+                e("div", { style: { display: "inline-block", padding: "7px 16px", background: DARK, color: G, borderRadius: 8, fontSize: "0.82rem", fontWeight: 700 } }, "📁 Fájl kiválasztása")
+              )
+              : e("div", { style: { marginBottom: 13 } },
+                e("div", { style: { position: "relative", borderRadius: 10, overflow: "hidden" } },
+                  e("img", { src: imagePreview, alt: "preview", style: { width: "100%", maxHeight: 220, objectFit: "cover", display: "block" } }),
+                  e("button", { onClick: () => { setImagePreview(null); setImageB64(null); }, style: { position: "absolute", top: 8, right: 8, width: 26, height: 26, background: "rgba(0,0,0,0.6)", color: "white", border: "none", borderRadius: "50%", cursor: "pointer", fontSize: "0.85rem", fontWeight: 700 } }, "✕")
+                ),
+                e("label", { htmlFor: "__fileInput", style: { display: "block", textAlign: "center", marginTop: 6, fontSize: "0.75rem", color: G, cursor: "pointer", textDecoration: "underline" } }, "Másik fotó")
+              )
+          ),
+
+          inputMode === "szoveg" && e("textarea", { value: textInput, onChange: ev => setTextInput(ev.target.value), placeholder: "Pl.: Fehér esküvői dekor, piros székszoknya, arany tányéralátétek, fotófal, mennyezetdekor...\n\nMinél részletesebb, annál pontosabb.", style: { ...inp(), minHeight: 140, resize: "vertical", lineHeight: 1.75, marginBottom: 13 } }),
+
+          e("div", { style: { display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 8 } },
+            e("button", { onClick: () => setStep(2), style: { padding: "10px 13px", background: "white", color: "#aaa", border: "1.5px solid " + BORDER, borderRadius: 10, fontFamily: "Georgia,serif", fontSize: "0.84rem", cursor: "pointer" } }, "← Vissza"),
+            e("button", { onClick: () => generate(false), disabled: loading, style: { padding: "10px", background: loading ? "#bbb" : DARK, color: G, border: "none", borderRadius: 10, fontFamily: "Georgia,serif", fontSize: "0.94rem", cursor: loading ? "not-allowed" : "pointer", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 } },
+              loading
+                ? [e("div", { key: "sp", style: { width: 16, height: 16, border: "2.5px solid " + G, borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite" } }), "AI elemzi..."]
+                : "✦ Generálás AI-jal"
+            ),
+            e("button", { onClick: () => generate(true), disabled: loading, style: { padding: "10px 12px", background: "white", color: "#888", border: "1.5px solid " + BORDER, borderRadius: 10, fontFamily: "Georgia,serif", fontSize: "0.8rem", cursor: "pointer", whiteSpace: "nowrap" } }, "Átugrás →")
+          ),
+          e("div", { style: { textAlign: "center", fontSize: "0.66rem", color: "#bbb", marginTop: 6 } }, "Az \"Átugrás\" csak az auto + extras tételeket adja hozzá, AI nélkül")
+        )
+      ),
+
+      // ═══ LÉPÉS 4 ═══
+      step === 4 && e("div", { style: sCard },
+        e("div", { style: { background: WARM, padding: "13px 18px", borderBottom: "1px solid " + BORDER, display: "flex", justifyContent: "space-between", alignItems: "center" } },
+          e("div", null,
+            e("div", { style: { fontSize: "1rem", fontWeight: 700, color: DARK } }, "💰 Árajánlat"),
+            e("div", { style: { fontSize: "0.66rem", color: "#bbb", marginTop: 1 } }, quoteNum)
+          ),
+          e("button", { onClick: () => { setStep(1); setItems([]); setAiSummary(""); }, style: { padding: "5px 11px", background: "white", border: "1px solid " + BORDER, borderRadius: 8, fontSize: "0.72rem", cursor: "pointer", color: "#888", fontFamily: "Georgia,serif" } }, "+ Új ajánlat")
+        ),
+        e("div", { style: { padding: "16px 18px" } },
+
+          e("div", { style: { display: "flex", gap: 11, flexWrap: "wrap", paddingBottom: 11, borderBottom: "1px solid " + BORDER, marginBottom: 13, fontSize: "0.81rem", color: "#999" } },
+            clientName && e("span", null, "👤 ", e("strong", { style: { color: DARK } }, clientName)),
+            helyszin && e("span", null, "📍 " + helyszin),
+            eventDate && e("span", null, "📅 " + new Date(eventDate).toLocaleDateString("hu-HU")),
+            eventType && e("span", null, "🎉 " + eventType),
+            vendeg && e("span", null, "👥 " + vendeg + " fő"),
+            szin && e("span", null, "🎨 " + szin)
+          ),
+
+          aiSummary && e("div", { style: { background: WARM, borderLeft: "3px solid " + G, borderRadius: "0 8px 8px 0", padding: "9px 13px", marginBottom: 13, fontSize: "0.83rem", lineHeight: 1.7, color: "#555" } }, aiSummary),
+
+          e("table", { style: { width: "100%", borderCollapse: "collapse" } },
+            e("thead", null,
+              e("tr", { style: { borderBottom: "2px solid " + BORDER } },
+                ...([["Megnevezés", "left"], ["Ár", "right"], ["Db", "center"], ["Összeg", "right"], ["", "right"]]).map(([h, a], i) =>
+                  e("th", { key: i, style: { textAlign: a, padding: "5px 6px", fontSize: "0.61rem", textTransform: "uppercase", letterSpacing: "0.07em", color: "#bbb", fontWeight: 700 } }, h)
+                )
+              )
+            ),
+            e("tbody", null,
+              ...items.map((it, i) => {
+                const p = PRODUCTS[it.key]; if (!p) return null;
+                return e("tr", { key: i, style: { borderBottom: "1px solid #f4efe6", background: i % 2 === 0 ? "white" : "#fdfcf9" } },
+                  e("td", { style: { padding: "8px 6px" } },
+                    e("div", { style: { fontWeight: 600, color: DARK, fontSize: "0.84rem" } }, p.name),
+                    p.m ? e("div", { style: { fontSize: "0.61rem", color: "#bbb" } }, "⚠️ " + p.m) : null,
+                    e("div", { style: { fontSize: "0.61rem", color: it.auto ? G + "aa" : it.note === "Extras" ? "#7ab" : "#ccc", marginTop: 1 } }, (it.auto ? "⚙️ " : it.note === "Extras" ? "🎁 " : "✏️ ") + it.note)
+                  ),
+                  e("td", { style: { padding: "8px 6px", textAlign: "right", color: "#aaa", fontSize: "0.78rem", whiteSpace: "nowrap" } }, p.price.toLocaleString("hu-HU") + " Ft"),
+                  e("td", { style: { padding: "8px 6px", textAlign: "center" } },
+                    e("div", { style: { display: "inline-flex", alignItems: "center", gap: 3 } },
+                      e("button", { onClick: () => changeQty(i, Math.max(1, (parseInt(it.qty) || 1) - 1)), style: { width: 20, height: 20, border: "1px solid " + BORDER, background: "white", borderRadius: 4, cursor: "pointer", fontSize: "0.85rem", color: DARK, fontWeight: 700 } }, "−"),
+                      e("input", { type: "number", value: it.qty, min: 1, onChange: ev => { const v = ev.target.value; if (v === "" || v === "0") { changeQty(i, ""); return; } const n = parseInt(v); if (!isNaN(n) && n >= 1) changeQty(i, n); }, onBlur: ev => { if (!ev.target.value || parseInt(ev.target.value) < 1) changeQty(i, 1); }, style: { width: 38, border: "1px solid " + BORDER, borderRadius: 4, padding: "2px 3px", textAlign: "center", fontFamily: "Georgia,serif", fontSize: "0.82rem", color: DARK, background: CREAM } }),
+                      e("button", { onClick: () => changeQty(i, (parseInt(it.qty) || 1) + 1), style: { width: 20, height: 20, border: "1px solid " + BORDER, background: "white", borderRadius: 4, cursor: "pointer", fontSize: "0.85rem", color: DARK, fontWeight: 700 } }, "+")
+                    )
+                  ),
+                  e("td", { style: { padding: "8px 6px", textAlign: "right", fontWeight: 700, color: DARK, fontSize: "0.85rem", whiteSpace: "nowrap" } }, fmt(p.price * (parseInt(it.qty) || 1))),
+                  e("td", { style: { padding: "8px 4px", textAlign: "right" } },
+                    e("button", { onClick: () => removeItem(i), style: { background: "none", border: "none", color: "#ddd", cursor: "pointer", fontSize: "0.9rem" } }, "✕")
+                  )
+                );
+              })
+            )
+          ),
+
+          e("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 6px", borderTop: "2px solid " + G, marginTop: 4 } },
+            e("span", { style: { fontSize: "0.98rem", fontWeight: 700, color: DARK } }, "Végösszeg"),
+            e("span", { style: { fontSize: "1.45rem", fontWeight: 700, color: G } }, fmt(total))
+          ),
+
+          // Kézi hozzáadás
+          e("div", { style: { marginTop: 13, padding: "12px 13px", background: WARM, borderRadius: 10, border: "1px solid " + BORDER } },
+            e("div", { style: { fontSize: "0.62rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#aaa", marginBottom: 6 } }, "+ Tétel kézi hozzáadása"),
+            e("div", { style: { display: "flex", gap: 7 } },
+              e("select", { value: addKey, onChange: ev => setAddKey(ev.target.value), style: { flex: 1, border: "1.5px solid " + BORDER, borderRadius: 7, padding: "7px 8px", fontFamily: "Georgia,serif", fontSize: "0.75rem", background: "white", color: DARK } },
+                ...ALL_KEYS.map(k => e("option", { key: k, value: k }, PRODUCTS[k].name + " — " + PRODUCTS[k].price.toLocaleString("hu-HU") + " Ft"))
+              ),
+              e("input", { type: "number", value: addQty, min: 1, onChange: ev => setAddQty(Math.max(1, Number(ev.target.value))), style: { width: 52, border: "1.5px solid " + BORDER, borderRadius: 7, padding: "7px 5px", fontFamily: "Georgia,serif", fontSize: "0.88rem", background: "white", color: DARK, textAlign: "center" } }),
+              e("button", { onClick: addItem, style: { padding: "7px 12px", background: DARK, border: "none", borderRadius: 7, cursor: "pointer", fontSize: "0.81rem", fontFamily: "Georgia,serif", color: G, fontWeight: 700 } }, "+ Add")
+            )
+          ),
+
+          e("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginTop: 9 } },
+            e("button", { onClick: printQuote, style: { padding: "11px", background: DARK, color: G, border: "none", borderRadius: 10, fontFamily: "Georgia,serif", fontSize: "0.88rem", cursor: "pointer", fontWeight: 700 } }, "⬇️ Letöltés PDF (.pdf)"),
+            e("button", { onClick: exportExcel, style: { padding: "11px", background: "#1a4d2a", color: "#7dcea0", border: "none", borderRadius: 10, fontFamily: "Georgia,serif", fontSize: "0.88rem", cursor: "pointer", fontWeight: 700 } }, "📊 Letöltés Excel (.xlsx)")
+          )
+        )
+      )
+    )
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
+</script>
+</body>
+</html>
